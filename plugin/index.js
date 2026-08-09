@@ -5,6 +5,8 @@ const Telemetry = require('./telemetry');
 const commands = require('./commands/index');
 const { sendMOB } = require('./waypoint');
 const { sendNotification } = require('./notifications');
+const forwardMessage = require('./forwardMessage');
+const sendMessage = require('./sendMessage');
 
 if (!global.crypto) {
   // Older Node.js versions (like the one bundled in Venus OS
@@ -23,6 +25,17 @@ let Protobuf;
 
 // Keep a map of ongoing notification episodes
 const episodes = new Map();
+
+function isConfiguredNode(nodeNum, settings) {
+  if (!settings.nodes || !settings.nodes.length) {
+    return false;
+  }
+
+  return settings.nodes.some((node) => {
+    return Number(node.node) === Number(nodeNum);
+  });
+}
+
 
 function getNodeContext(app, node, nodeNum, settings) {
   if (node.thisNode) {
@@ -86,6 +99,11 @@ function getNodeContext(app, node, nodeNum, settings) {
 
 function nodeToSignalK(app, node, nodeInfo, settings) {
   const context = getNodeContext(app, node, nodeInfo.num, settings);
+  
+  if (!node.thisNode && !isConfiguredNode(nodeInfo.num, settings)) {
+    return undefined;
+  }
+  
   if (!context || (context === 'vessels.self' && !node.thisNode)) {
     return undefined;
   }
@@ -465,6 +483,22 @@ module.exports = (app) => {
                 },
               },
               {
+                path: 'communication.meshtastic.nodes.*.battery.stateOfCharge',
+                value: {
+                  displayName: 'Meshtastic node battery level',
+                  description: 'Battery state reported by Meshtastic node',
+                  units: 'ratio',
+                },
+              },
+              {
+                path: 'communication.meshtastic.nodes.*.battery.voltage',
+                value: {
+                  displayName: 'Meshtastic node battery voltage',
+                  description: 'Battery voltage reported by Meshtastic node',
+                  units: 'V',
+                },
+              },
+              {
                 path: 'communication.meshtastic.nodesVisible',
                 value: {
                   displayName: 'Nodes visible',
@@ -533,14 +567,17 @@ module.exports = (app) => {
               nodes[nodeNum].seen = new Date(nodeDbData[nodeNum].seen);
             }
           });
+
         app.setPluginStatus(`Connecting to Meshtastic node ${settings.device.address}`);
         sendMeta();
+
         if (settings.device && settings.device.transport === 'http') {
           return TransportHTTP.create(settings.device.address);
         }
+
         return TransportNode.create(settings.device.address);
-      })
-      .then((transport) => {
+        })
+        .then((transport) => {
         device = new MeshDevice(transport);
         unsubscribes.meshtastic.push(
           device.events.onDeviceStatus.subscribe((state) => {
@@ -555,10 +592,16 @@ module.exports = (app) => {
             if (!nodes[myNodeInfo.myNodeNum]) {
               nodes[myNodeInfo.myNodeNum] = {};
             }
+
             nodes[myNodeInfo.myNodeNum].thisNode = true;
+            nodes[myNodeInfo.myNodeNum].nodeNum = myNodeInfo.myNodeNum;
+
+            app.debug(`Meshtastic own node detected: ${myNodeInfo.myNodeNum}`);
+
             setConnectionStatus();
           }),
           device.events.onNodeInfoPacket.subscribe((nodeInfo) => {
+            
             if (!nodes[nodeInfo.num]) {
               nodes[nodeInfo.num] = {};
             }
@@ -584,18 +627,28 @@ module.exports = (app) => {
             writeNodeDb();
           }),
           device.events.onMeshPacket.subscribe((packet) => {
+
             if (!nodes[packet.from]) {
               nodes[packet.from] = {};
             }
+            // Make sure our own node is always identified
+            if (device && device.myNodeInfo 
+                && packet.from === device.myNodeInfo.myNodeNum) {
+              nodes[packet.from].thisNode = true;
+            }
             if (packet.rxTime) {
               const packetDate = new Date(packet.rxTime * 1000);
-              if (packetDate > nodes[packet.from].seen) {
+
+              if (!nodes[packet.from].seen
+                  || packetDate > nodes[packet.from].seen) {
                 nodes[packet.from].seen = packetDate;
               }
             }
+
             setConnectionStatus();
-          }),
-          device.events.onMessagePacket.subscribe((message) => {
+            }),
+            device.events.onMessagePacket.subscribe((message) => {
+            forwardMessage(app, message);
             if (message.type !== 'direct') {
               // Not DM
               return;
@@ -623,11 +676,13 @@ module.exports = (app) => {
                 });
             });
           }),
+          
           device.events.onTelemetryPacket.subscribe((packet) => {
+
             if (!nodes[packet.from]) {
-              // Unknown node
-              return;
+              nodes[packet.from] = {};
             }
+            
             if (packet.data && packet.data.time) {
               const telemetryDate = new Date(packet.data.time * 1000);
               if (telemetryDate > nodes[packet.from].seen) {
@@ -635,15 +690,27 @@ module.exports = (app) => {
               }
             }
             setConnectionStatus();
-            const context = getNodeContext(app, nodes[packet.from], packet.from, settings);
+      
+            let context = getNodeContext(
+              app,
+              nodes[packet.from],
+              packet.from,
+              settings
+            );
+
+            if (!context && nodes[packet.from].thisNode) {
+              context = 'vessels.self';
+            }
+
             if (!context) {
-              // Not a vessel
               return;
             }
+            
+            
             if (packet.data.variant && packet.data.variant.case === 'deviceMetrics') {
               const values = [];
-              if (context !== 'vessels.self' || nodes[packet.from].thisNode) {
-                values.push(
+              if (context === 'vessels.self' || nodes[packet.from].thisNode) {
+                  values.push(
                   {
                     path: 'communication.meshtastic.uptime',
                     value: packet.data.variant.value.uptimeSeconds,
@@ -658,16 +725,20 @@ module.exports = (app) => {
                   },
                 );
               }
-              values.push(
-                {
-                  path: `electrical.batteries.${packet.from}.capacity.stateOfCharge`,
+              if (packet.data.variant.value.batteryLevel != null) {
+                values.push({
+                  path: `communication.meshtastic.nodes.${packet.from}.battery.stateOfCharge`,
                   value: packet.data.variant.value.batteryLevel / 100,
-                },
-                {
-                  path: `electrical.batteries.${packet.from}.voltage`,
+                });
+              }
+
+              if (packet.data.variant.value.voltage != null) {
+                values.push({
+                  path: `communication.meshtastic.nodes.${packet.from}.battery.voltage`,
                   value: packet.data.variant.value.voltage,
-                },
-              );
+                });
+              }
+
               app.handleMessage('signalk-meshtastic', {
                 context,
                 updates: [
@@ -722,10 +793,21 @@ module.exports = (app) => {
             }
           }),
           device.events.onPositionPacket.subscribe((position) => {
+            
+            if (!isConfiguredNode(position.from, settings)) {
+              return;
+            }
+            
             if (!nodes[position.from]) {
               // Unknown node
               return;
             }
+            
+            if (!nodes[position.from].thisNode &&
+              !isConfiguredNode(position.from, settings)) {
+              return;
+            }
+            
             if (position.data && position.data.time) {
               const positionDate = new Date(position.data.time * 1000);
               if (positionDate > nodes[position.from].seen) {
@@ -733,7 +815,14 @@ module.exports = (app) => {
               }
             }
             setConnectionStatus();
-            const context = getNodeContext(app, nodes[position.from], position.from, settings);
+            
+            let context = getNodeContext(
+              app,
+              nodes[position.from],
+              position.from,
+              settings
+            );
+            
             if (!context) {
               // Not a vessel
               return;
@@ -841,6 +930,10 @@ module.exports = (app) => {
                 path: 'environment.depth.belowSurface',
                 period: 1000,
               },
+              {
+                path: 'communication.meshtastic.tx',
+                policy: 'instant',
+              },
             ],
           },
           unsubscribes.signalk,
@@ -856,6 +949,13 @@ module.exports = (app) => {
                 return;
               }
               u.values.forEach((v) => {
+                
+                if (v.path === 'communication.meshtastic.tx') {
+                   sendMessage(device, v.value, nodes)
+                   .catch((e) => app.error(`Failed to send Meshtastic message: ${e.message}`));
+                   return;
+                }
+                
                 if (v.path === 'navigation.position') {
                   if (!device) {
                     // Not connected to Meshtastic yet
@@ -940,9 +1040,6 @@ module.exports = (app) => {
       }
       return Object.keys(nodes)
         .filter((nodeId) => {
-          if (nodes[nodeId].thisNode) {
-            return false;
-          }
           return true;
         })
         .map((nodeId) => {
