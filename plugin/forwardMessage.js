@@ -9,7 +9,6 @@ module.exports = (app, message) => {
       {
         source: {
           label: 'signalk-meshtastic',
-          src: String(message.from),
         },
         timestamp: new Date().toISOString(),
         values: [
