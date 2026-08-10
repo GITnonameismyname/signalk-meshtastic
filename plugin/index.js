@@ -1,4 +1,3 @@
-```javascript
 const { readFile, writeFile } = require('fs/promises');
 const { join } = require('path');
 
@@ -10,8 +9,8 @@ const forwardMessage = require('./forwardMessage');
 const sendMessage = require('./sendMessage');
 
 if (!global.crypto) {
-  // Older Node.js versions (like the one bundled in Venus OS
-  // don't have crypto module available
+  // Older Node.js versions (like the one bundled in Venus OS)
+  // don't have crypto module available.
   // eslint-disable-next-line global-require
   global.crypto = require('node:crypto');
 }
@@ -32,7 +31,9 @@ function isConfiguredNode(nodeNum, settings) {
     return false;
   }
 
-  return settings.nodes.some((node) => Number(node.node) === Number(nodeNum));
+  return settings.nodes.some(
+    (node) => Number(node.node) === Number(nodeNum),
+  );
 }
 
 function getNodeContext(app, node, nodeNum, settings) {
@@ -40,9 +41,14 @@ function getNodeContext(app, node, nodeNum, settings) {
     return 'vessels.self';
   }
 
-  if (settings.nodes && settings.nodes.length && settings.nodes
-    .find((settingNode) => settingNode.node === nodeNum
-      && settingNode.role === 'onboard')) {
+  if (
+    settings.nodes
+    && settings.nodes.length
+    && settings.nodes.find(
+      (settingNode) => settingNode.node === nodeNum
+        && settingNode.role === 'onboard',
+    )
+  ) {
     // Onboard equipment
     return 'vessels.self';
   }
@@ -70,7 +76,10 @@ function getNodeContext(app, node, nodeNum, settings) {
       .find((vesselCtx) => {
         const vessel = app.signalk.root.vessels[vesselCtx];
 
-        if (!vessel.communication || !vessel.communication.callsignVhf) {
+        if (
+          !vessel.communication
+          || !vessel.communication.callsignVhf
+        ) {
           return false;
         }
 
@@ -92,10 +101,13 @@ function getNodeContext(app, node, nodeNum, settings) {
     return null;
   }
 
-  if (settings && settings.communications
-    && settings.communications.populate_vessels) {
+  if (
+    settings
+    && settings.communications
+    && settings.communications.populate_vessels
+  ) {
     // 98 MMSI prefix is for craft associated with a parent ship
-    // TODO: Add MID (country code of parent ship
+    // TODO: Add MID (country code of parent ship)
     return `vessels.urn:mrn:imo:mmsi:98${nodeNum}`;
   }
 
@@ -104,7 +116,12 @@ function getNodeContext(app, node, nodeNum, settings) {
 }
 
 function nodeToSignalK(app, node, nodeInfo, settings) {
-  const context = getNodeContext(app, node, nodeInfo.num, settings);
+  const context = getNodeContext(
+    app,
+    node,
+    nodeInfo.num,
+    settings,
+  );
 
   if (!node.thisNode && !isConfiguredNode(nodeInfo.num, settings)) {
     return undefined;
@@ -129,7 +146,10 @@ function nodeToSignalK(app, node, nodeInfo, settings) {
     },
   ];
 
-  if (nodeInfo.position && Number.isFinite(nodeInfo.position.latitudeI)) {
+  if (
+    nodeInfo.position
+    && Number.isFinite(nodeInfo.position.latitudeI)
+  ) {
     values.push({
       path: 'navigation.position',
       value: {
@@ -200,10 +220,15 @@ function nodeToSignalK(app, node, nodeInfo, settings) {
     value: role,
   });
 
-  if (context.indexOf('meshtastic.urn') === 0
-    || (context.indexOf('vessels.urn') === 0
-      && context.indexOf(':98') !== -1)) {
-    // This is a purely Meshtastic node so we inject additional data to "vesselify" it
+  if (
+    context.indexOf('meshtastic.urn') === 0
+    || (
+      context.indexOf('vessels.urn') === 0
+      && context.indexOf(':98') !== -1
+    )
+  ) {
+    // This is a purely Meshtastic node so we inject additional
+    // data to "vesselify" it.
     values.push({
       path: '',
       value: {
@@ -211,12 +236,15 @@ function nodeToSignalK(app, node, nodeInfo, settings) {
       },
     });
 
-    if (settings && settings.communications
-      && settings.communications.populate_vessels) {
+    if (
+      settings
+      && settings.communications
+      && settings.communications.populate_vessels
+    ) {
       values.push({
         path: '',
         value: {
-          mmsi: context.split(':').at(-1),
+          mmsi: context.split(':').pop(),
         },
       });
     }
@@ -282,13 +310,17 @@ module.exports = (app) => {
       }
     })
     .catch((e) => {
-      app.setPluginError(`Failed to load Meshtastic library: ${e.message}`);
+      app.setPluginError(
+        `Failed to load Meshtastic library: ${e.message}`,
+      );
     });
 
   plugin.start = (settings, restart) => {
     if (!toBinary) {
       if (app.setPluginStatus) {
-        app.setPluginStatus('Waiting for Meshtastic library to load');
+        app.setPluginStatus(
+          'Waiting for Meshtastic library to load',
+        );
       }
 
       if (!app.getDataDirPath) {
@@ -298,10 +330,14 @@ module.exports = (app) => {
       setTimeout(() => {
         plugin.start(settings, restart);
       }, 1);
+
       return;
     }
 
-    const nodeDbFile = join(app.getDataDirPath(), 'node-db.json');
+    const nodeDbFile = join(
+      app.getDataDirPath(),
+      'node-db.json',
+    );
 
     publishInterval = setInterval(() => {
       if (!device) {
@@ -309,8 +345,10 @@ module.exports = (app) => {
         return;
       }
 
-      if (!settings.communications
-        || !settings.communications.send_environment_metrics) {
+      if (
+        !settings.communications
+        || !settings.communications.send_environment_metrics
+      ) {
         // Metrics sending disabled
         return;
       }
@@ -322,26 +360,34 @@ module.exports = (app) => {
         return;
       }
 
-      const telemetryMessage = create(Protobuf.Telemetry.TelemetrySchema, {
-        time: Math.floor(new Date().getTime() / 1000),
-        variant: {
-          case: 'environmentMetrics',
-          value: create(
-            Protobuf.Telemetry.EnvironmentMetricsSchema,
-            values,
-          ),
+      const telemetryMessage = create(
+        Protobuf.Telemetry.TelemetrySchema,
+        {
+          time: Math.floor(new Date().getTime() / 1000),
+          variant: {
+            case: 'environmentMetrics',
+            value: create(
+              Protobuf.Telemetry.EnvironmentMetricsSchema,
+              values,
+            ),
+          },
         },
-      });
+      );
 
       device.sendPacket(
-        toBinary(Protobuf.Telemetry.TelemetrySchema, telemetryMessage),
+        toBinary(
+          Protobuf.Telemetry.TelemetrySchema,
+          telemetryMessage,
+        ),
         Protobuf.Portnums.PortNum.TELEMETRY_APP,
         'broadcast',
         0,
         true,
         false,
       )
-        .catch((e) => app.error(`Failed to send telemetry: ${e.message}`));
+        .catch((e) => app.error(
+          `Failed to send telemetry: ${e.message}`,
+        ));
     }, 60000 * 4);
 
     function setWatchdog() {
@@ -357,20 +403,31 @@ module.exports = (app) => {
       // If we haven't been called in 10min, restart plugin
       watchdog = setTimeout(() => {
         watchdogTriggered += 1;
+
         app.debug(
-          `Watchdog ${watchdogTriggered} triggered, no packets seen in ${minutes}min`,
+          `Watchdog ${watchdogTriggered} triggered, `
+          + `no packets seen in ${minutes}min`,
         );
+
         app.error(
-          `Watchdog ${watchdogTriggered} triggered, no packets seen in ${minutes}min`,
+          `Watchdog ${watchdogTriggered} triggered, `
+          + `no packets seen in ${minutes}min`,
         );
+
         restart(settings);
       }, 60000 * minutes);
     }
 
     function writeNodeDb() {
-      writeFile(nodeDbFile, JSON.stringify(nodes, null, 2), 'utf-8')
+      writeFile(
+        nodeDbFile,
+        JSON.stringify(nodes, null, 2),
+        'utf-8',
+      )
         .catch((e) => {
-          app.error(`Failed to store node DB: ${e.message}`);
+          app.error(
+            `Failed to store node DB: ${e.message}`,
+          );
         });
     }
 
@@ -378,6 +435,7 @@ module.exports = (app) => {
       setWatchdog();
 
       const now = new Date();
+
       const nodesOnline = Object.keys(nodes)
         .filter((nodeId) => {
           if (nodes[nodeId].thisNode) {
@@ -390,12 +448,15 @@ module.exports = (app) => {
             return false;
           }
 
-          // Online threshold, should be same as NUM_ONLINE_SECS in Meshtastic fw
+          // Online threshold, should be same as NUM_ONLINE_SECS in
+          // Meshtastic fw
           const onlineSecs = 60 * 60 * 2;
 
-          if (nodes[nodeId].seen.getTime()
-            > now.getTime() - (onlineSecs * 1000)) {
-            // Seen in last 10min
+          if (
+            nodes[nodeId].seen.getTime()
+            > now.getTime() - (onlineSecs * 1000)
+          ) {
+            // Seen in last two hours
             return true;
           }
 
@@ -439,9 +500,10 @@ module.exports = (app) => {
       }
 
       app.setPluginStatus(
-        `${deviceState.charAt(0).toUpperCase() + deviceState.slice(1)} `
-        + `node at ${settings.device.address} can see ${nodesOnline.length} `
-        + 'Meshtastic nodes',
+        `${deviceState.charAt(0).toUpperCase()}`
+        + `${deviceState.slice(1)} `
+        + `node at ${settings.device.address} can see `
+        + `${nodesOnline.length} Meshtastic nodes`,
       );
 
       let selfId = 'XX';
@@ -490,7 +552,8 @@ module.exports = (app) => {
                 value: {
                   units: 'ratio',
                   displayName: 'AirUtilTX',
-                  description: 'Utilization for the current channel, including well formed TX, RX and malformed RX (aka noise)',
+                  description:
+                    'Utilization for the current channel, including well formed TX, RX and malformed RX (aka noise)',
                 },
               },
               {
@@ -498,7 +561,8 @@ module.exports = (app) => {
                 value: {
                   units: 'ratio',
                   displayName: 'ChUtil',
-                  description: 'Percent of airtime for transmission used within the last hour',
+                  description:
+                    'Percent of airtime for transmission used within the last hour',
                 },
               },
               {
@@ -512,36 +576,42 @@ module.exports = (app) => {
                 path: 'communication.meshtastic.shortName',
                 value: {
                   displayName: 'Short name',
-                  description: 'A VERY short name, ideally two characters',
+                  description:
+                    'A VERY short name, ideally two characters',
                 },
               },
               {
                 path: 'communication.meshtastic.role',
                 value: {
                   displayName: 'Role',
-                  description: '`User\'s role in the mesh',
+                  description: 'User\'s role in the mesh',
                 },
               },
               {
                 path: 'communication.meshtastic.nodeNum',
                 value: {
                   displayName: 'Node number',
-                  description: 'A globally unique ID string for this node',
+                  description:
+                    'A globally unique ID string for this node',
                 },
               },
               {
-                path: 'communication.meshtastic.nodes.*.battery.stateOfCharge',
+                path:
+                  'communication.meshtastic.nodes.*.battery.stateOfCharge',
                 value: {
                   displayName: 'Meshtastic node battery level',
-                  description: 'Battery state reported by Meshtastic node',
+                  description:
+                    'Battery state reported by Meshtastic node',
                   units: 'ratio',
                 },
               },
               {
-                path: 'communication.meshtastic.nodes.*.battery.voltage',
+                path:
+                  'communication.meshtastic.nodes.*.battery.voltage',
                 value: {
                   displayName: 'Meshtastic node battery voltage',
-                  description: 'Battery voltage reported by Meshtastic node',
+                  description:
+                    'Battery voltage reported by Meshtastic node',
                   units: 'V',
                 },
               },
@@ -549,33 +619,38 @@ module.exports = (app) => {
                 path: 'communication.meshtastic.nodesVisible',
                 value: {
                   displayName: 'Nodes visible',
-                  description: 'Number of nodes currently visible to this node',
+                  description:
+                    'Number of nodes currently visible to this node',
                 },
               },
               {
                 path: 'communication.meshtastic.deviceState',
                 value: {
                   displayName: 'Device state',
-                  description: 'State of connection to the Meshtastic device',
+                  description:
+                    'State of connection to the Meshtastic device',
                 },
               },
               {
                 path: 'communication.meshtastic.deviceStateNum',
                 value: {
                   displayName: 'Device state number',
-                  description: 'State of connection to the Meshtastic device as numeric value',
+                  description:
+                    'State of connection to the Meshtastic device as numeric value',
                   zones: [
                     {
                       state: 'warn',
                       lower: 0,
                       upper: 5,
-                      message: 'Not connected to Meshtastic device',
+                      message:
+                        'Not connected to Meshtastic device',
                     },
                     {
                       state: 'nominal',
                       lower: 7,
                       upper: 8,
-                      message: 'Meshtastic connected and configured',
+                      message:
+                        'Meshtastic connected and configured',
                     },
                   ],
                 },
@@ -584,7 +659,8 @@ module.exports = (app) => {
                 path: 'communication.meshtastic.uptime',
                 value: {
                   displayName: 'Uptime',
-                  description: 'How long the device has been running since the last reboot',
+                  description:
+                    'How long the device has been running since the last reboot',
                   units: 's',
                 },
               },
@@ -595,7 +671,9 @@ module.exports = (app) => {
     }
 
     if (app.setPluginStatus) {
-      app.setPluginStatus('Loading Meshtastic node database');
+      app.setPluginStatus(
+        'Loading Meshtastic node database',
+      );
     }
 
     readFile(nodeDbFile, 'utf-8')
@@ -610,21 +688,26 @@ module.exports = (app) => {
           nodeDbData = {};
         }
 
-        Object.keys(nodeDbData)
-          .forEach((nodeNum) => {
-            nodes[nodeNum] = nodeDbData[nodeNum];
+        Object.keys(nodeDbData).forEach((nodeNum) => {
+          nodes[nodeNum] = nodeDbData[nodeNum];
 
-            if (nodeDbData[nodeNum].seen) {
-              nodes[nodeNum].seen = new Date(nodeDbData[nodeNum].seen);
-            }
-          });
+          if (nodeDbData[nodeNum].seen) {
+            nodes[nodeNum].seen = new Date(
+              nodeDbData[nodeNum].seen,
+            );
+          }
+        });
 
         app.setPluginStatus(
           `Connecting to Meshtastic node ${settings.device.address}`,
         );
+
         sendMeta();
 
-        if (settings.device && settings.device.transport === 'http') {
+        if (
+          settings.device
+          && settings.device.transport === 'http'
+        ) {
           return TransportHTTP.create(settings.device.address);
         }
 
@@ -639,7 +722,9 @@ module.exports = (app) => {
 
             if (state === 2) {
               // Disconnected
-              app.debug('Received disconnect event, restarting');
+              app.debug(
+                'Received disconnect event, restarting',
+              );
               restart(settings);
             }
           }),
@@ -650,7 +735,8 @@ module.exports = (app) => {
             }
 
             nodes[myNodeInfo.myNodeNum].thisNode = true;
-            nodes[myNodeInfo.myNodeNum].nodeNum = myNodeInfo.myNodeNum;
+            nodes[myNodeInfo.myNodeNum].nodeNum =
+              myNodeInfo.myNodeNum;
 
             app.debug(
               `Meshtastic own node detected: ${myNodeInfo.myNodeNum}`,
@@ -668,8 +754,10 @@ module.exports = (app) => {
               return;
             }
 
-            nodes[nodeInfo.num].longName = nodeInfo.user.longName;
-            nodes[nodeInfo.num].shortName = nodeInfo.user.shortName;
+            nodes[nodeInfo.num].longName =
+              nodeInfo.user.longName;
+            nodes[nodeInfo.num].shortName =
+              nodeInfo.user.shortName;
 
             if (!nodes[nodeInfo.num].publicKey) {
               // Only store the public key once to prevent spoofing
@@ -678,10 +766,14 @@ module.exports = (app) => {
                 .toString('base64');
             }
 
-            nodes[nodeInfo.num].seen = new Date(nodeInfo.lastHeard * 1000);
+            nodes[nodeInfo.num].seen = new Date(
+              nodeInfo.lastHeard * 1000,
+            );
 
-            if (nodes[nodeInfo.num].seen
-              > Date.now() - (1000 * 60 * 60 * 24 * 2)) {
+            if (
+              nodes[nodeInfo.num].seen
+              > Date.now() - (1000 * 60 * 60 * 24 * 2)
+            ) {
               // Node seen less than two days ago, register with SK
               const ctx = nodeToSignalK(
                 app,
@@ -690,9 +782,15 @@ module.exports = (app) => {
                 settings,
               );
 
-              if (ctx && ctx.indexOf('vessels.urn:mrn:imo:mmsi:') === 0) {
+              if (
+                ctx
+                && ctx.indexOf(
+                  'vessels.urn:mrn:imo:mmsi:',
+                ) === 0
+              ) {
                 // We have an MMSI match, store it
-                nodes[nodeInfo.num].mmsi = ctx.split(':').at(-1);
+                nodes[nodeInfo.num].mmsi =
+                  ctx.split(':').pop();
               }
             }
 
@@ -706,17 +804,23 @@ module.exports = (app) => {
             }
 
             // Make sure our own node is always identified
-            if (device
+            if (
+              device
               && device.myNodeInfo
-              && packet.from === device.myNodeInfo.myNodeNum) {
+              && packet.from === device.myNodeInfo.myNodeNum
+            ) {
               nodes[packet.from].thisNode = true;
             }
 
             if (packet.rxTime) {
-              const packetDate = new Date(packet.rxTime * 1000);
+              const packetDate = new Date(
+                packet.rxTime * 1000,
+              );
 
-              if (!nodes[packet.from].seen
-                || packetDate > nodes[packet.from].seen) {
+              if (
+                !nodes[packet.from].seen
+                || packetDate > nodes[packet.from].seen
+              ) {
                 nodes[packet.from].seen = packetDate;
               }
             }
@@ -732,7 +836,10 @@ module.exports = (app) => {
               return;
             }
 
-            const fromCrew = commands.isFromCrew(message, settings);
+            const fromCrew = commands.isFromCrew(
+              message,
+              settings,
+            );
 
             Object.keys(commands).forEach((cmd) => {
               if (cmd === 'isFromCrew') {
@@ -778,9 +885,14 @@ module.exports = (app) => {
             }
 
             if (packet.data && packet.data.time) {
-              const telemetryDate = new Date(packet.data.time * 1000);
+              const telemetryDate = new Date(
+                packet.data.time * 1000,
+              );
 
-              if (telemetryDate > nodes[packet.from].seen) {
+              if (
+                !nodes[packet.from].seen
+                || telemetryDate > nodes[packet.from].seen
+              ) {
                 nodes[packet.from].seen = telemetryDate;
               }
             }
@@ -802,39 +914,59 @@ module.exports = (app) => {
               return;
             }
 
-            if (packet.data.variant
-              && packet.data.variant.case === 'deviceMetrics') {
+            if (
+              packet.data.variant
+              && packet.data.variant.case === 'deviceMetrics'
+            ) {
               const values = [];
 
-              if (context === 'vessels.self'
-                || nodes[packet.from].thisNode) {
+              if (
+                context === 'vessels.self'
+                || nodes[packet.from].thisNode
+              ) {
                 values.push(
                   {
                     path: 'communication.meshtastic.uptime',
-                    value: packet.data.variant.value.uptimeSeconds,
+                    value:
+                      packet.data.variant.value.uptimeSeconds,
                   },
                   {
                     path: 'communication.meshtastic.airUtilTx',
-                    value: packet.data.variant.value.airUtilTx / 100,
+                    value:
+                      packet.data.variant.value.airUtilTx / 100,
                   },
                   {
-                    path: 'communication.meshtastic.channelUtilization',
-                    value: packet.data.variant.value.channelUtilization / 100,
+                    path:
+                      'communication.meshtastic.channelUtilization',
+                    value:
+                      packet.data.variant.value
+                        .channelUtilization / 100,
                   },
                 );
               }
 
-              if (packet.data.variant.value.batteryLevel != null) {
+              if (
+                packet.data.variant.value.batteryLevel
+                != null
+              ) {
                 values.push({
-                  path: `communication.meshtastic.nodes.${packet.from}.battery.stateOfCharge`,
-                  value: packet.data.variant.value.batteryLevel / 100,
+                  path:
+                    `communication.meshtastic.nodes.${packet.from}`
+                    + '.battery.stateOfCharge',
+                  value:
+                    packet.data.variant.value.batteryLevel / 100,
                 });
               }
 
-              if (packet.data.variant.value.voltage != null) {
+              if (
+                packet.data.variant.value.voltage != null
+              ) {
                 values.push({
-                  path: `communication.meshtastic.nodes.${packet.from}.battery.voltage`,
-                  value: packet.data.variant.value.voltage,
+                  path:
+                    `communication.meshtastic.nodes.${packet.from}`
+                    + '.battery.voltage',
+                  value:
+                    packet.data.variant.value.voltage,
                 });
               }
 
@@ -855,8 +987,10 @@ module.exports = (app) => {
               return;
             }
 
-            if (packet.data.variant
-              && packet.data.variant.case === 'environmentMetrics') {
+            if (
+              packet.data.variant
+              && packet.data.variant.case === 'environmentMetrics'
+            ) {
               if (context === 'vessels.self') {
                 // We don't need to loop back here
                 return;
@@ -865,22 +999,29 @@ module.exports = (app) => {
               const values = [
                 {
                   path: 'environment.outside.temperature',
-                  value: packet.data.variant.value.temperature + 273.15,
+                  value:
+                    packet.data.variant.value.temperature + 273.15,
                 },
               ];
 
-              if (packet.data.variant.value.windDirection) {
+              if (
+                packet.data.variant.value.windDirection
+              ) {
                 values.push({
                   path: 'environment.wind.directionTrue',
-                  value: packet.data.variant.value.windDirection
+                  value:
+                    packet.data.variant.value.windDirection
                     * (Math.PI / 180),
                 });
               }
 
-              if (packet.data.variant.value.windSpeed) {
+              if (
+                packet.data.variant.value.windSpeed
+              ) {
                 values.push({
                   path: 'environment.wind.speedOverGround',
-                  value: packet.data.variant.value.windSpeed,
+                  value:
+                    packet.data.variant.value.windSpeed,
                 });
               }
 
@@ -901,7 +1042,9 @@ module.exports = (app) => {
           }),
 
           device.events.onPositionPacket.subscribe((position) => {
-            if (!isConfiguredNode(position.from, settings)) {
+            if (
+              !isConfiguredNode(position.from, settings)
+            ) {
               return;
             }
 
@@ -911,9 +1054,14 @@ module.exports = (app) => {
             }
 
             if (position.data && position.data.time) {
-              const positionDate = new Date(position.data.time * 1000);
+              const positionDate = new Date(
+                position.data.time * 1000,
+              );
 
-              if (positionDate > nodes[position.from].seen) {
+              if (
+                !nodes[position.from].seen
+                || positionDate > nodes[position.from].seen
+              ) {
                 nodes[position.from].seen = positionDate;
               }
             }
@@ -985,17 +1133,23 @@ module.exports = (app) => {
               ],
             });
 
-            if (context
-              && context.indexOf('vessels.urn:mrn:imo:mmsi:') === 0) {
+            if (
+              context
+              && context.indexOf(
+                'vessels.urn:mrn:imo:mmsi:',
+              ) === 0
+            ) {
               // We have an MMSI match, store it
-              nodes[position.from].mmsi = context.split(':').at(-1);
+              nodes[position.from].mmsi =
+                context.split(':').pop();
             }
 
             writeNodeDb();
           }),
         );
 
-        // Subscribe to Signal K values we may want to transmit to Meshtastic
+        // Subscribe to Signal K values we may want to transmit
+        // to Meshtastic
         app.subscriptionmanager.subscribe(
           {
             context: 'vessels.self',
@@ -1070,6 +1224,7 @@ module.exports = (app) => {
                     .catch((e) => app.error(
                       `Failed to send Meshtastic message: ${e.message}`,
                     ));
+
                   return;
                 }
 
@@ -1079,14 +1234,18 @@ module.exports = (app) => {
                     return;
                   }
 
-                  if (!Number.isFinite(v.value.latitude)
-                    || !Number.isFinite(v.value.longitude)) {
+                  if (
+                    !Number.isFinite(v.value.latitude)
+                    || !Number.isFinite(v.value.longitude)
+                  ) {
                     // No position
                     return;
                   }
 
-                  if (!settings.communications
-                    || !settings.communications.send_position) {
+                  if (
+                    !settings.communications
+                    || !settings.communications.send_position
+                  ) {
                     return;
                   }
 
@@ -1097,10 +1256,13 @@ module.exports = (app) => {
                     .catch((e) => app.error(
                       `Failed to set node position: ${e.message}`,
                     ));
+
                   return;
                 }
 
-                if (v.path.indexOf('notifications.') === 0) {
+                if (
+                  v.path.indexOf('notifications.') === 0
+                ) {
                   sendNotification(
                     v.path,
                     v.value,
@@ -1110,8 +1272,11 @@ module.exports = (app) => {
                     app,
                   );
 
-                  if (v.path.indexOf('notifications.mob.') === 0) {
-                    // This is a notification about a MOB beacon, create waypoint
+                  if (
+                    v.path.indexOf('notifications.mob.') === 0
+                  ) {
+                    // This is a notification about a MOB beacon,
+                    // create waypoint
                     sendMOB(
                       v.path,
                       v.value,
@@ -1125,7 +1290,9 @@ module.exports = (app) => {
                   return;
                 }
 
-                if (v.path === 'environment.wind.speedOverGround') {
+                if (
+                  v.path === 'environment.wind.speedOverGround'
+                ) {
                   telemetry.updateWindSpeed(v.value);
                   return;
                 }
@@ -1137,19 +1304,26 @@ module.exports = (app) => {
           },
         );
 
-        device.log.settings.minLevel = settings.device.log_level;
+        device.log.settings.minLevel =
+          settings.device.log_level;
+
         return device.configure();
       })
       .then(() => {
         app.debug(
-          `Connected and configured with Meshtastic node ${settings.device.address}`,
+          `Connected and configured with Meshtastic node `
+          + `${settings.device.address}`,
         );
+
         app.setPluginStatus(
-          `Connected to Meshtastic node ${settings.device.address}`,
+          `Connected to Meshtastic node `
+          + `${settings.device.address}`,
         );
 
         if (device) {
-          device.setHeartbeatInterval(settings.device.heartbeat_interval || 60000);
+          device.setHeartbeatInterval(
+            settings.device.heartbeat_interval || 60000,
+          );
         }
       })
       .catch((e) => {
@@ -1161,7 +1335,9 @@ module.exports = (app) => {
         );
 
         setTimeout(() => {
-          app.debug('Triggered restart due to failed initial connect/configure');
+          app.debug(
+            'Triggered restart due to failed initial connect/configure',
+          );
           restart(settings);
         }, 30000);
       });
@@ -1178,8 +1354,10 @@ module.exports = (app) => {
 
     unsubscribes.signalk.forEach((f) => f());
     unsubscribes.signalk = [];
+
     unsubscribes.meshtastic.forEach((f) => f());
     unsubscribes.meshtastic = [];
+
     episodes.clear();
 
     if (!device || device.deviceStatus === 2) {
@@ -1220,15 +1398,20 @@ module.exports = (app) => {
             transport: {
               type: 'string',
               default: 'tcp',
-              title: 'How to connect to the boat Meshtastic node',
+              title:
+                'How to connect to the boat Meshtastic node',
               oneOf: [
                 {
                   const: 'tcp',
-                  title: 'TCP (nodes connected to same network, typically ESP32)',
+                  title:
+                    'TCP (nodes connected to same network, '
+                    + 'typically ESP32)',
                 },
                 {
                   const: 'http',
-                  title: 'HTTP (nodes connected to same network, typically ESP32)',
+                  title:
+                    'HTTP (nodes connected to same network, '
+                    + 'typically ESP32)',
                 },
               ],
             },
@@ -1292,27 +1475,38 @@ module.exports = (app) => {
           properties: {
             send_position: {
               type: 'boolean',
-              title: 'Update Meshtastic node position from Signal K vessel position',
+              title:
+                'Update Meshtastic node position from Signal K '
+                + 'vessel position',
               default: true,
             },
             send_alerts: {
               type: 'boolean',
-              title: 'Send alerts to crew via Meshtastic',
+              title:
+                'Send alerts to crew via Meshtastic',
               default: true,
             },
             send_environment_metrics: {
               type: 'boolean',
-              title: 'Send environment metrics (wind, temperature, etc) to Meshtastic',
+              title:
+                'Send environment metrics (wind, temperature, '
+                + 'etc) to Meshtastic',
               default: false,
             },
             digital_switching: {
               type: 'boolean',
-              title: 'Allow crew members to change digital switch status by Meshtastic message ("turn decklight on")',
+              title:
+                'Allow crew members to change digital switch '
+                + 'status by Meshtastic message '
+                + '("turn decklight on")',
               default: false,
             },
             populate_vessels: {
               type: 'boolean',
-              title: 'Populate Signal K vessels for Meshtastic devices sharing location (for display in Freeboard etc)',
+              title:
+                'Populate Signal K vessels for Meshtastic '
+                + 'devices sharing location (for display in '
+                + 'Freeboard etc)',
               default: false,
             },
           },
@@ -1325,4 +1519,3 @@ module.exports = (app) => {
 
   return plugin;
 };
-```
