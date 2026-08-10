@@ -18,7 +18,7 @@ module.exports = (app, message) => {
                 text: message.data,
                 from: message.from,
                 timestamp: new Date().toISOString(),
-            }
+            },
           },
         ],
       },
